@@ -77,7 +77,7 @@ function splitLine(line){ const out=[]; let cur='',q=false;
 
 const ERAS=['先史','古代','中世','近世','近代','現代'];
 const COLS=[
-  {key:'year',     label:'年',     cls:'year', sort:r=>+r.year},
+  {key:'year',     label:'年',     cls:'year', sort:r=>+r.year_start},
   {key:'era',      label:'時代',   sort:r=>ERAS.indexOf(r.era)},
   {key:'region',   label:'地域',   sort:r=>r.region},
   {key:'category', label:'分類',   sort:r=>r.category},
