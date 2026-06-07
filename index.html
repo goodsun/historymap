@@ -151,7 +151,8 @@ async function boot(){
   EVENTS = parseCSV(t).map(x=>({
     id:+x.id, year:+x.year_start, year_end:+x.year_end,
     label:x.year_label, era:x.era, area:x.area_code, region:x.region,
-    cat:x.category, title:x.title, imp:+x.importance||3, summary:x.summary, wiki:x.wiki
+    cat:x.category, title:x.title, imp:+x.importance||3, summary:x.summary, wiki:x.wiki,
+    lat:x.lat!==''?+x.lat:null, lon:x.lon!==''?+x.lon:null
   }));
 
   STOPS=buildStops(); initSlider(); initMap(); initCats(); bindControls(); render();
@@ -239,33 +240,35 @@ function render(){
   const active=EVENTS.filter(e=>isActive(e,year,win));
   document.getElementById('count').textContent=`${active.length}件`;
 
-  // ---- markers grouped by area ----
+  // ---- markers: イベント座標(lat/lon)でプロット。空欄はarea重心にフォールバック ----
   markers.forEach(m=>map.removeLayer(m)); markers=[];
-  const byArea={};
-  active.forEach(e=>{ (byArea[e.area]=byArea[e.area]||[]).push(e); });
-  Object.entries(byArea).forEach(([code,evs])=>{
-    const reg=REGIONS[code]; if(!reg||reg.lat===null) return; // WORLD等は地図に出さない
-    evs.sort((a,b)=>b.imp-a.imp);
-    const top=evs[0];
-    const r=6+Math.min(evs.length,6)*1.5+top.imp;
-    const m=L.circleMarker([reg.lat,reg.lon],{
-      radius:r, color:'#fff', weight:1, fillColor:CATS[top.cat].color, fillOpacity:.8
+  const byPt={};
+  active.forEach(e=>{
+    let la=e.lat, lo=e.lon;
+    if(la===null){ const r=REGIONS[e.area]; if(!r||r.lat===null) return; la=r.lat; lo=r.lon; } // 座標なし＆WORLD等は出さない
+    const k=la.toFixed(2)+','+lo.toFixed(2);
+    (byPt[k]=byPt[k]||{la,lo,evs:[]}).evs.push(e);
+  });
+  Object.values(byPt).forEach(g=>{
+    g.evs.sort((a,b)=>b.imp-a.imp);
+    const top=g.evs[0];
+    const r=6+Math.min(g.evs.length,5)+top.imp;
+    const m=L.circleMarker([g.la,g.lo],{
+      radius:r, color:'#fff', weight:1, fillColor:CATS[top.cat].color, fillOpacity:.85
     }).addTo(map);
-    m.bindPopup(`<div class="pop-t">${reg.name}</div>`+
-      evs.slice(0,8).map(e=>`<div>${e.label} <a href="${wikiUrl(e)}" target="_blank" rel="noopener"><b>${e.title}</b></a></div>`).join('')+
-      (evs.length>8?`<div>…ほか${evs.length-8}件</div>`:''));
-    m.on('click',()=>showPanel(active,year,code));
+    m.bindPopup(g.evs.slice(0,8).map(e=>`<div>${e.label} <a href="${wikiUrl(e)}" target="_blank" rel="noopener"><b>${e.title}</b></a></div>`).join('')+
+      (g.evs.length>8?`<div>…ほか${g.evs.length-8}件</div>`:''));
+    m.on('click',()=>showPanel(g.evs, top.region));
     markers.push(m);
   });
 
-  showPanel(active,year,null);
+  showPanel(active, null);
 }
 
-function showPanel(active,year,focusArea){
-  const list = (focusArea? active.filter(e=>e.area===focusArea):active)
-    .slice().sort((a,b)=>a.year-b.year || b.imp-a.imp);
+function showPanel(list, label){
+  list = list.slice().sort((a,b)=>a.year-b.year || b.imp-a.imp);
   document.getElementById('panelTitle').textContent =
-    focusArea ? `${REGIONS[focusArea].name} の出来事 (${list.length})` : `この時代の出来事 (${list.length})`;
+    label ? `${label} 周辺 (${list.length})` : `この時代の出来事 (${list.length})`;
   const html = list.map(e=>{
     const col=CATS[e.cat]?CATS[e.cat].color:'#888';
     const reg=REGIONS[e.area]?REGIONS[e.area].name:e.region;
