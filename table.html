@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>historymap — 年表テーブル</title>
+<style>
+  :root{ --bg:#1b1d23; --panel:#23262e; --line:#363a44; --text:#e6e8ee; --muted:#9aa0ac; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;
+             background:var(--bg); color:var(--text); }
+  header{ position:sticky; top:0; background:var(--panel); border-bottom:1px solid var(--line);
+          padding:10px 16px; display:flex; flex-direction:column; gap:8px; z-index:10; }
+  .row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  h1{ font-size:15px; margin:0; font-weight:700; }
+  h1 span{ color:var(--muted); font-weight:400; font-size:12px; margin-left:8px; }
+  input[type=search]{ background:#1f222a; color:var(--text); border:1px solid var(--line);
+        border-radius:6px; padding:6px 10px; font-size:13px; width:240px; }
+  .chip{ font-size:12px; padding:3px 10px; border-radius:999px; cursor:pointer; user-select:none;
+         border:1px solid var(--line); background:#2a2e38; color:var(--muted); }
+  .chip.on{ background:#5b9cff; border-color:#5b9cff; color:#fff; }
+  .chip.cat.on{ color:#fff; }
+  .small{ font-size:12px; color:var(--muted); }
+  .nav{ margin-left:auto; font-size:13px; color:#8fbaff; text-decoration:none; border:1px solid var(--line);
+        padding:4px 10px; border-radius:6px; }
+  .nav:hover{ background:#3c4350; }
+  .wrap{ padding:0 16px 40px; }
+  table{ border-collapse:collapse; width:100%; font-size:13px; }
+  thead th{ position:sticky; top:0; background:#2a2e38; text-align:left; padding:8px 10px;
+            border-bottom:2px solid var(--line); cursor:pointer; white-space:nowrap; }
+  thead th:hover{ background:#333845; }
+  thead th .ar{ color:#5b9cff; font-size:11px; }
+  tbody td{ padding:6px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  tbody tr:hover{ background:#20232b; }
+  td.year{ font-variant-numeric:tabular-nums; white-space:nowrap; color:var(--muted); }
+  td.title a{ color:var(--text); text-decoration:none; font-weight:600; }
+  td.title a:hover{ color:#8fbaff; text-decoration:underline; }
+  td.title .ext{ font-size:10px; color:var(--muted); margin-left:4px; }
+  td.sum{ color:var(--muted); max-width:380px; }
+  .badge{ font-size:11px; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .era{ font-size:11px; padding:2px 8px; border-radius:4px; background:#3a3f4b; white-space:nowrap; }
+  .stars{ color:#ffcf56; letter-spacing:-1px; white-space:nowrap; }
+  #err{ padding:30px; line-height:1.7; }
+  #err code{ background:#000; padding:2px 8px; border-radius:4px; color:#7fd; }
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <h1>historymap <span>年表テーブル</span></h1>
+    <span id="count" class="small"></span>
+    <a href="index.html" class="nav">🗺 地図で見る</a>
+  </div>
+  <div class="row">
+    <input type="search" id="q" placeholder="出来事・地域・要約を検索…">
+    <div class="row" id="eras"></div>
+  </div>
+  <div class="row" id="cats"></div>
+</header>
+<div class="wrap">
+  <table id="tbl">
+    <thead><tr id="head"></tr></thead>
+    <tbody id="body"></tbody>
+  </table>
+</div>
+<div id="err" style="display:none"></div>
+
+<script>
+function parseCSV(text){
+  const lines=text.replace(/\r/g,'').split('\n').filter(l=>l.length);
+  const head=splitLine(lines[0]);
+  return lines.slice(1).map(line=>{ const c=splitLine(line); const o={}; head.forEach((h,i)=>o[h]=(c[i]??'').trim()); return o; });
+}
+function splitLine(line){ const out=[]; let cur='',q=false;
+  for(const ch of line){ if(ch==='"'){q=!q;continue;} if(ch===','&&!q){out.push(cur);cur='';continue;} cur+=ch; }
+  out.push(cur); return out; }
+
+const ERAS=['先史','古代','中世','近世','近代','現代'];
+const COLS=[
+  {key:'year',     label:'年',     cls:'year', sort:r=>+r.year},
+  {key:'era',      label:'時代',   sort:r=>ERAS.indexOf(r.era)},
+  {key:'region',   label:'地域',   sort:r=>r.region},
+  {key:'category', label:'分類',   sort:r=>r.category},
+  {key:'title',    label:'出来事', cls:'title', sort:r=>r.title},
+  {key:'importance',label:'重要度',sort:r=>+r.importance},
+  {key:'summary',  label:'要約',   cls:'sum', sort:r=>r.summary},
+];
+let ROWS=[], CATS={}, sortKey='year', sortAsc=true;
+const filt={ q:'', era:new Set(), cat:new Set() };
+
+function wikiUrl(r){ return 'https://ja.wikipedia.org/wiki/'+encodeURIComponent(r.wiki||r.title); }
+function stars(n){ n=+n||0; return '★'.repeat(n)+'☆'.repeat(5-n); }
+
+async function boot(){
+  let t,c;
+  try{
+    [t,c]=await Promise.all([ fetch('timeline.csv').then(x=>x.text()), fetch('categories.csv').then(x=>x.text()) ]);
+  }catch(e){ return showErr(); }
+  if(t.startsWith('<')||!t.includes('year')) return showErr();
+  parseCSV(c).forEach(x=>CATS[x.code]={name:x.name_ja,color:x.color});
+  ROWS=parseCSV(t);
+  buildHead(); buildFilters(); bind(); draw();
+}
+function showErr(){
+  document.querySelector('.wrap').style.display='none';
+  const e=document.getElementById('err'); e.style.display='block';
+  e.innerHTML='<h2>CSVを読み込めませんでした</h2><p>簡易サーバ経由で開いてください：</p>'+
+    '<p><code>python3 -m http.server 8000</code> → <code>http://localhost:8000/table.html</code></p>';
+}
+function buildHead(){
+  document.getElementById('head').innerHTML = COLS.map(c=>
+    `<th data-k="${c.key}">${c.label}<span class="ar" data-ar="${c.key}"></span></th>`).join('');
+  document.querySelectorAll('#head th').forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k;
+    if(sortKey===k) sortAsc=!sortAsc; else { sortKey=k; sortAsc=true; }
+    draw();
+  });
+}
+function buildFilters(){
+  document.getElementById('eras').innerHTML = ERAS.map(e=>`<span class="chip era-chip" data-e="${e}">${e}</span>`).join('');
+  document.querySelectorAll('.era-chip').forEach(ch=>ch.onclick=()=>{
+    const e=ch.dataset.e; filt.era.has(e)?filt.era.delete(e):filt.era.add(e);
+    ch.classList.toggle('on'); draw();
+  });
+  document.getElementById('cats').innerHTML = Object.keys(CATS).map(code=>
+    `<span class="chip cat" data-c="${code}" style="border-color:${CATS[code].color}">${CATS[code].name}</span>`).join('');
+  document.querySelectorAll('.cat').forEach(ch=>ch.onclick=()=>{
+    const c=ch.dataset.c; filt.cat.has(c)?filt.cat.delete(c):filt.cat.add(c);
+    ch.classList.toggle('on'); ch.style.background=ch.classList.contains('on')?CATS[c].color:''; draw();
+  });
+}
+function bind(){ document.getElementById('q').oninput=e=>{ filt.q=e.target.value.trim(); draw(); }; }
+
+function draw(){
+  const q=filt.q;
+  let rows=ROWS.filter(r=>{
+    if(filt.era.size && !filt.era.has(r.era)) return false;
+    if(filt.cat.size && !filt.cat.has(r.category)) return false;
+    if(q){ const hay=`${r.year_label} ${r.region} ${r.title} ${r.summary}`; if(!hay.includes(q)) return false; }
+    return true;
+  });
+  const col=COLS.find(c=>c.key===sortKey);
+  rows.sort((a,b)=>{ const x=col.sort(a),y=col.sort(b);
+    const v = (typeof x==='number') ? x-y : String(x).localeCompare(String(y),'ja');
+    return sortAsc?v:-v; });
+
+  document.querySelectorAll('.ar').forEach(s=>s.textContent='');
+  const ar=document.querySelector(`.ar[data-ar="${sortKey}"]`); if(ar) ar.textContent=sortAsc?' ▲':' ▼';
+
+  document.getElementById('count').textContent=`${rows.length} / ${ROWS.length} 件`;
+  document.getElementById('body').innerHTML = rows.map(r=>{
+    const cat=CATS[r.category]||{name:r.category,color:'#888'};
+    return `<tr>
+      <td class="year">${r.year_label}</td>
+      <td><span class="era">${r.era}</span></td>
+      <td>${r.region}</td>
+      <td><span class="badge" style="background:${cat.color}33;color:${cat.color}">${cat.name}</span></td>
+      <td class="title"><a href="${wikiUrl(r)}" target="_blank" rel="noopener">${r.title}<span class="ext">↗</span></a></td>
+      <td><span class="stars">${stars(r.importance)}</span></td>
+      <td class="sum">${r.summary||''}</td>
+    </tr>`;
+  }).join('');
+}
+boot();
+</script>
+</body>
+</html>
