@@ -26,6 +26,7 @@
 | `title` | str | 出来事 |
 | `importance` | int | **重要度 1〜5（5が最重要）。人間が編集する列** |
 | `summary` | str | 一行要約（AIが補完・拡充する想定。空欄可） |
+| `wiki` | str | 日本語Wikipediaの記事名。`https://ja.wikipedia.org/wiki/{wiki}` でリンク。全行 実在記事をAPIで検証済み（空欄時は`title`にフォールバック） |
 
 ## 時代区分（era）の境界
 

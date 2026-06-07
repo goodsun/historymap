@@ -38,6 +38,9 @@
        border-radius:0 6px 6px 0; }
   .ev .y{ font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
   .ev .t{ font-size:14px; font-weight:600; margin:2px 0; }
+  .ev .t a{ color:var(--text); text-decoration:none; }
+  .ev .t a:hover{ color:#8fbaff; text-decoration:underline; }
+  .ev .t .ext{ font-size:10px; color:var(--muted); margin-left:4px; vertical-align:1px; }
   .ev .s{ font-size:12px; color:var(--muted); line-height:1.4; }
   .ev .meta{ font-size:11px; color:var(--muted); margin-top:3px; }
   .stars{ color:#ffcf56; letter-spacing:-1px; }
@@ -123,6 +126,8 @@ function buildStops(){
   return s;
 }
 function stars(n){ n=+n||0; return '★'.repeat(n)+'☆'.repeat(5-n); }
+// Wikipedia(ja)記事への直リンク（wiki列は実在記事名で検証済み）
+function wikiUrl(e){ return 'https://ja.wikipedia.org/wiki/'+encodeURIComponent(e.wiki||e.title); }
 
 let EVENTS=[], REGIONS={}, CATS={}, enabled=new Set(), markers=[], map, STOPS=[];
 
@@ -143,7 +148,7 @@ async function boot(){
   EVENTS = parseCSV(t).map(x=>({
     id:+x.id, year:+x.year, year_end:x.year_end?+x.year_end:null,
     label:x.year_label, era:x.era, area:x.area_code, region:x.region,
-    cat:x.category, title:x.title, imp:+x.importance||3, summary:x.summary
+    cat:x.category, title:x.title, imp:+x.importance||3, summary:x.summary, wiki:x.wiki
   }));
 
   STOPS=buildStops(); initSlider(); initMap(); initCats(); bindControls(); render();
@@ -247,7 +252,7 @@ function render(){
       radius:r, color:'#fff', weight:1, fillColor:CATS[top.cat].color, fillOpacity:.8
     }).addTo(map);
     m.bindPopup(`<div class="pop-t">${reg.name}</div>`+
-      evs.slice(0,8).map(e=>`<div>${e.label} <b>${e.title}</b></div>`).join('')+
+      evs.slice(0,8).map(e=>`<div>${e.label} <a href="${wikiUrl(e)}" target="_blank" rel="noopener"><b>${e.title}</b></a></div>`).join('')+
       (evs.length>8?`<div>…ほか${evs.length-8}件</div>`:''));
     m.on('click',()=>showPanel(active,year,code));
     markers.push(m);
@@ -266,7 +271,7 @@ function showPanel(active,year,focusArea){
     const reg=REGIONS[e.area]?REGIONS[e.area].name:e.region;
     return `<div class="ev" style="border-left-color:${col}">
       <div class="y">${e.label} · ${reg}</div>
-      <div class="t">${e.title}</div>
+      <div class="t"><a href="${wikiUrl(e)}" target="_blank" rel="noopener">${e.title}<span class="ext">↗</span></a></div>
       ${e.summary?`<div class="s">${e.summary}</div>`:''}
       <div class="meta">${CATS[e.cat]?CATS[e.cat].name:e.cat} · <span class="stars">${stars(e.imp)}</span></div>
     </div>`;
