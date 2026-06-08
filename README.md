@@ -31,14 +31,15 @@ historymapは **「点」で世界史の "いつ・どこ" を俯瞰する地図
 | `data/layers.json` | **レイヤー登録表（マニフェスト）**。存在するエンティティCSVと表示名・既定ON/OFFを定義 |
 | `data/events.csv` | 出来事レイヤー |
 | `data/countries.csv` | 国レイヤー（建国〜滅亡・首都座標） |
-| `data/persons.csv` | 人物レイヤー（生〜没） |
+| `data/peoples.csv` | 民族・部族レイヤー（拡散的な集団。先史〜古代向け） |
+| `data/persons.csv` | 人物レイヤー（個人の生〜没。近世以降向け） |
 | `data/regions.csv` | 地域マスタ（座標フォールバック用の重心つき） |
 | `data/categories.csv` | カテゴリ（分類）マスタ |
 
 ### エンティティCSVは全て同一スキーマ
 
-`events.csv` / `countries.csv` / `persons.csv` は**同じ列構成**で、いつでもマージ可能。
-「種別（event/polity/person）」はファイル名が表すので、CSV内に種別列は持たない（DRY）。
+`events.csv` / `countries.csv` / `peoples.csv` / `persons.csv` は**同じ列構成**で、いつでもマージ可能。
+「種別（event/polity/people/person）」はファイル名が表すので、CSV内に種別列は持たない（DRY）。
 UIの「レイヤー」チェックボックスで**ONにされたファイルだけを遅延ロード**する（無駄な読み込みをしない）。
 
 新しいレイヤーの足し方：同一スキーマのCSVを `data/` に置き、`data/layers.json` に1行登録するだけ。
