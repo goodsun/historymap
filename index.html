@@ -144,7 +144,7 @@ function stars(n){ n=+n||0; return '★'.repeat(n)+'☆'.repeat(5-n); }
 // Wikipedia(ja)記事への直リンク（wiki列は実在記事名で検証済み）
 function wikiUrl(e){ return 'https://ja.wikipedia.org/wiki/'+encodeURIComponent(e.wiki||e.title); }
 
-let EVENTS=[], REGIONS={}, CATS={}, enabled=new Set(), markers=[], map, STOPS=[];
+let EVENTS=[], REGIONS={}, CATS={}, enabled=new Set(), markers=[], map, STOPS=[], markerByKey={};
 const CB='?v='+Date.now();     // キャッシュバスター（リロード毎に最新データを取得）
 let LAYERS=[];                 // config/layers.json の layers
 const layerCache={};           // key -> パース済み行(種別タグ付き)
@@ -305,7 +305,7 @@ function render(){
   document.getElementById('count').textContent=`${active.length}件`;
 
   // ---- markers: 種別×座標でグルーピング。座標空欄はarea重心にフォールバック ----
-  markers.forEach(m=>map.removeLayer(m)); markers=[];
+  markers.forEach(m=>map.removeLayer(m)); markers=[]; markerByKey={};
   const groups={};
   active.forEach(e=>{
     let la=e.lat, lo=e.lon;
@@ -316,11 +316,14 @@ function render(){
   Object.values(groups).forEach(g=>{
     g.evs.sort((a,b)=>b.imp-a.imp);
     const top=g.evs[0];
-    const m=L.circleMarker([g.la,g.lo], markerStyle(g.type, top, g.evs.length)).addTo(map);
+    const st=markerStyle(g.type, top, g.evs.length);
+    const m=L.circleMarker([g.la,g.lo], st).addTo(map);
+    m._base={radius:st.radius, color:st.color, weight:st.weight};
     const tip = g.evs.slice(0,10).map(e=>`${e.label}　${e.title}`).join('<br>')+
       (g.evs.length>10?`<br>…ほか${g.evs.length-10}件`:'');
     m.bindTooltip(tip,{direction:'top',opacity:0.95,sticky:true});  // ホバーでバルーン
     m.on('click',()=>highlight(g.evs));                              // クリックでパネル該当をハイライト
+    g.evs.forEach(e=>markerByKey[e._type+'#'+e.id]=m);              // パネル→地図の対応
     markers.push(m);
   });
 
@@ -355,6 +358,17 @@ function showPanel(list){
     html += `<div class="sec">この時代の${L.label} (${items.length})</div>` + items.map(evCard).join('');
   });
   document.getElementById('panel').innerHTML = html || '<div class="small">該当なし。スライダーや表示幅・レイヤーを動かしてみてください。</div>';
+  // パネルのカードをホバー → 地図の対応マーカーを強調＋バルーン
+  document.querySelectorAll('#panel .ev').forEach(el=>{
+    el.onmouseenter=()=>emphasize(el.dataset.key,true);
+    el.onmouseleave=()=>emphasize(el.dataset.key,false);
+  });
+}
+// パネル⇄地図: マーカーを一時的に強調しバルーン表示
+function emphasize(key, on){
+  const m=markerByKey[key]; if(!m) return;
+  if(on){ m.setStyle({color:'#ffd34d', weight:4}); m.setRadius((m._base.radius||8)+4); m.bringToFront(); m.openTooltip(); }
+  else { m.setStyle({color:m._base.color, weight:m._base.weight}); m.setRadius(m._base.radius); m.closeTooltip(); }
 }
 // マーカークリック: 該当カードを全体の中でハイライト（絞り込まず比較を維持）
 function highlight(evs){
