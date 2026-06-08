@@ -154,7 +154,7 @@ const LS={ get(k,d){ try{const v=localStorage.getItem('hm.'+k);return v==null?d:
            set(k,v){ try{localStorage.setItem('hm.'+k,JSON.stringify(v));}catch(e){} } };
 
 function mapRow(x, type){
-  return { _type:type, id:+x.id, year:+x.year_start, year_end:+x.year_end,
+  return { _type:type, id:+x.id, year:+x.year_start, year_end:(x.year_end===''||x.year_end==null)?null:+x.year_end,
     label:x.year_label, era:x.era, area:x.area_code, region:x.region,
     cat:x.category, title:x.title, imp:+x.importance||3, summary:x.summary, wiki:x.wiki,
     lat:(x.lat!==''&&x.lat!=null)?+x.lat:null, lon:(x.lon!==''&&x.lon!=null)?+x.lon:null };
@@ -285,6 +285,7 @@ function bindControls(){
 function isActive(ev, year, win){
   if(!enabled.has(ev.cat)) return false;
   const h=snapStep(ev.year)/2;         // その出来事の年代の刻みに応じた最小許容（スナップで必ず拾える）
+  if(ev.year_end===null) return ev.year-h<=year;                          // 継続中（開始年以降ずっと）
   if(ev.year_end>ev.year) return ev.year-h<=year && year<=ev.year_end+h;  // スパン
   return Math.abs(ev.year-year)<=Math.max(win,h);                          // 点イベント
 }
