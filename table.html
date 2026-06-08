@@ -91,6 +91,9 @@ const COLS=[
   {key:'summary',  label:'要約',   cls:'sum', sort:r=>r.summary},
 ];
 let ROWS=[], CATS={}, sortKey='year', sortAsc=true;
+const CB='?v='+Date.now();
+const LS={ get(k,d){ try{const v=localStorage.getItem('hm.'+k);return v==null?d:JSON.parse(v);}catch(e){return d;} },
+           set(k,v){ try{localStorage.setItem('hm.'+k,JSON.stringify(v));}catch(e){} } };
 let LAYERS=[]; const layerCache={}, layerOn=new Set();
 const filt={ q:'', era:new Set(), cat:new Set() };
 
@@ -100,19 +103,21 @@ function stars(n){ n=+n||0; return '★'.repeat(n)+'☆'.repeat(5-n); }
 async function boot(){
   let manifest, c;
   try{
-    manifest=await fetch('data/layers.json').then(r=>{ if(!r.ok) throw 0; return r.json(); });
-    c=await fetch('data/'+manifest.masters.categories).then(x=>x.text());
+    manifest=await fetch('config/layers.json'+CB).then(r=>{ if(!r.ok) throw 0; return r.json(); });
+    c=await fetch(manifest.masters.categories+CB).then(x=>x.text());
   }catch(e){ return showErr(); }
   if(c.startsWith('<')) return showErr();
   parseCSV(c).forEach(x=>CATS[x.code]={name:x.name_ja,color:x.color});
   LAYERS=manifest.layers;
   buildHead(); buildFilters(); buildLayerUI(); bind();
-  for(const L of LAYERS.filter(l=>l.default)) await loadLayer(L);
+  const savedLayers=LS.get('layers',null);
+  const onKeys = savedLayers ?? LAYERS.filter(l=>l.default).map(l=>l.key);
+  for(const L of LAYERS.filter(l=>onKeys.includes(l.key))) await loadLayer(L);
   rebuild();
 }
 async function loadLayer(L){
   if(!layerCache[L.key]){
-    try{ const t=await fetch('data/'+L.file).then(r=>{ if(!r.ok) throw 0; return r.text(); });
+    try{ const t=await fetch(L.file+CB).then(r=>{ if(!r.ok) throw 0; return r.text(); });
       layerCache[L.key]=parseCSV(t).map(x=>{ x._type=L.key; x._typeLabel=L.label; return x; });
     }catch(e){ layerCache[L.key]=[]; }
   }
@@ -124,14 +129,16 @@ function rebuild(){
 }
 function buildLayerUI(){
   const box=document.getElementById('layers');
+  const saved=LS.get('layers',null);
+  const isOn=L=> saved? saved.includes(L.key) : L.default;
   box.innerHTML = LAYERS.map(L=>
-    `<label class="chip lyr${L.default?' on':''}" data-k="${L.key}"><input type="checkbox" ${L.default?'checked':''}> ${L.label}</label>`).join('');
+    `<label class="chip lyr${isOn(L)?' on':''}" data-k="${L.key}"><input type="checkbox" ${isOn(L)?'checked':''}> ${L.label}</label>`).join('');
   box.querySelectorAll('.lyr').forEach(el=>{
     el.querySelector('input').onchange=async e=>{
       const L=LAYERS.find(x=>x.key===el.dataset.k);
       if(e.target.checked){ await loadLayer(L); el.classList.add('on'); }
       else { layerOn.delete(L.key); el.classList.remove('on'); }
-      rebuild();
+      LS.set('layers',[...layerOn]); rebuild();
     };
   });
 }

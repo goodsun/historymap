@@ -1,9 +1,0 @@
-{
-  "masters": { "categories": "categories.csv", "regions": "regions.csv" },
-  "layers": [
-    { "key": "event",  "file": "events.csv",    "label": "出来事", "default": true },
-    { "key": "polity", "file": "countries.csv",  "label": "国",       "default": false },
-    { "key": "people", "file": "peoples.csv",    "label": "民族・部族", "default": false },
-    { "key": "person", "file": "persons.csv",    "label": "人物",     "default": false }
-  ]
-}

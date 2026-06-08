@@ -35,7 +35,8 @@
          overflow-y:auto; padding:12px 14px; }
   aside h2{ font-size:13px; color:var(--muted); margin:0 0 10px; font-weight:600; }
   .ev{ border-left:3px solid #555; padding:7px 10px; margin-bottom:8px; background:#1f222a;
-       border-radius:0 6px 6px 0; }
+       border-radius:0 6px 6px 0; transition:background .15s; }
+  .ev.hl{ background:#33405c; box-shadow:0 0 0 1px #5b9cff inset; }
   .ev .y{ font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
   .ev .t{ font-size:14px; font-weight:600; margin:2px 0; }
   .ev .t a{ color:var(--text); text-decoration:none; }
@@ -144,9 +145,13 @@ function stars(n){ n=+n||0; return '★'.repeat(n)+'☆'.repeat(5-n); }
 function wikiUrl(e){ return 'https://ja.wikipedia.org/wiki/'+encodeURIComponent(e.wiki||e.title); }
 
 let EVENTS=[], REGIONS={}, CATS={}, enabled=new Set(), markers=[], map, STOPS=[];
-let LAYERS=[];                 // data/layers.json の layers
+const CB='?v='+Date.now();     // キャッシュバスター（リロード毎に最新データを取得）
+let LAYERS=[];                 // config/layers.json の layers
 const layerCache={};           // key -> パース済み行(種別タグ付き)
 const layerOn=new Set();       // 表示ONのレイヤーkey
+// localStorageで設定を永続化
+const LS={ get(k,d){ try{const v=localStorage.getItem('hm.'+k);return v==null?d:JSON.parse(v);}catch(e){return d;} },
+           set(k,v){ try{localStorage.setItem('hm.'+k,JSON.stringify(v));}catch(e){} } };
 
 function mapRow(x, type){
   return { _type:type, id:+x.id, year:+x.year_start, year_end:+x.year_end,
@@ -158,10 +163,10 @@ function mapRow(x, type){
 async function boot(){
   let manifest, catText, regText;
   try{
-    manifest = await fetch('data/layers.json').then(r=>{ if(!r.ok) throw 0; return r.json(); });
+    manifest = await fetch('config/layers.json'+CB).then(r=>{ if(!r.ok) throw 0; return r.json(); });
     [catText,regText] = await Promise.all([
-      fetch('data/'+manifest.masters.categories).then(r=>r.text()),
-      fetch('data/'+manifest.masters.regions).then(r=>r.text())
+      fetch(manifest.masters.categories+CB).then(r=>r.text()),
+      fetch(manifest.masters.regions+CB).then(r=>r.text())
     ]);
   }catch(e){ return showErr(); }
   if(catText.startsWith('<')) return showErr();
@@ -172,13 +177,15 @@ async function boot(){
   LAYERS = manifest.layers;
 
   STOPS=buildStops(); initSlider(); initMap(); initCats(); buildLayerUI(); bindControls();
-  for(const L of LAYERS.filter(l=>l.default)) await loadLayer(L);
+  const savedLayers=LS.get('layers',null);
+  const onKeys = savedLayers ?? LAYERS.filter(l=>l.default).map(l=>l.key);
+  for(const L of LAYERS.filter(l=>onKeys.includes(l.key))) await loadLayer(L);
   rebuild();
 }
 // レイヤーを遅延ロード（ONにされて初めてfetch、以後キャッシュ）
 async function loadLayer(L){
   if(!layerCache[L.key]){
-    try{ const t=await fetch('data/'+L.file).then(r=>{ if(!r.ok) throw 0; return r.text(); });
+    try{ const t=await fetch(L.file+CB).then(r=>{ if(!r.ok) throw 0; return r.text(); });
       layerCache[L.key]=parseCSV(t).map(x=>mapRow(x,L.key));
     }catch(e){ layerCache[L.key]=[]; }
   }
@@ -192,12 +199,14 @@ function rebuild(){
 function buildLayerUI(){
   const box=document.getElementById('layers');
   LAYERS.forEach(L=>{
-    const el=document.createElement('label'); el.className='lyr'+(L.default?' on':'');
-    el.innerHTML=`<input type="checkbox" ${L.default?'checked':''}> ${L.label}`;
+    const saved=LS.get('layers',null);
+    const on = saved? saved.includes(L.key) : L.default;
+    const el=document.createElement('label'); el.className='lyr'+(on?' on':'');
+    el.innerHTML=`<input type="checkbox" ${on?'checked':''}> ${L.label}`;
     el.querySelector('input').onchange=async e=>{
       if(e.target.checked){ await loadLayer(L); el.classList.add('on'); }
       else { unloadLayer(L.key); el.classList.remove('on'); }
-      rebuild();
+      LS.set('layers',[...layerOn]); rebuild();
     };
     box.appendChild(el);
   });
@@ -217,24 +226,32 @@ function showErr(){
 function initSlider(){
   const sl=document.getElementById('slider');
   sl.min=0; sl.max=STOPS.length-1; sl.step=1;
-  const def=STOPS.indexOf(-550);
-  sl.value = def>=0 ? def : Math.floor(STOPS.length/2);
+  const saved=LS.get('year',null);
+  if(saved!=null && saved>=0 && saved<=+sl.max){ sl.value=saved; }
+  else { const def=STOPS.indexOf(-550); sl.value = def>=0 ? def : Math.floor(STOPS.length/2); }
+  const w=document.getElementById('window'); const sw=LS.get('window',null);
+  if(sw!=null){ w.value=sw; document.getElementById('winVal').textContent=sw; }
 }
 function initMap(){
   map = L.map('map',{worldCopyJump:true, minZoom:2}).setView([30,40],2);
+  // 既定のLeafletリンクを外し、© goodsun（リポジトリ）に差し替え
+  map.attributionControl.setPrefix('© <a href="https://github.com/goodsun/historymap" target="_blank" rel="noopener">goodsun</a>');
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
     attribution:'© OpenStreetMap © CARTO', subdomains:'abcd', maxZoom:8
   }).addTo(map);
 }
 function initCats(){
   const box=document.getElementById('cats');
+  const saved=LS.get('cats',null);
   Object.keys(CATS).forEach(code=>{
-    enabled.add(code);
+    const on = saved? saved.includes(code) : true;
+    if(on) enabled.add(code);
     const el=document.createElement('div');
-    el.className='cat on'; el.dataset.code=code;
+    el.className='cat'+(on?' on':''); el.dataset.code=code;
     el.innerHTML=`<span class="dot" style="background:${CATS[code].color}"></span>${CATS[code].name}`;
     el.onclick=()=>{ el.classList.toggle('on');
-      el.classList.contains('on')?enabled.add(code):enabled.delete(code); render(); };
+      el.classList.contains('on')?enabled.add(code):enabled.delete(code);
+      LS.set('cats',[...enabled]); render(); };
     box.appendChild(el);
   });
 }
@@ -242,7 +259,7 @@ function bindControls(){
   const s=document.getElementById('slider');
   s.oninput=()=>render();
   const w=document.getElementById('window');
-  w.oninput=()=>{ document.getElementById('winVal').textContent=w.value; render(); };
+  w.oninput=()=>{ document.getElementById('winVal').textContent=w.value; LS.set('window',+w.value); render(); };
   // 左右キーで年を移動（Shiftで10ノッチ）。スライダー操作中はネイティブに任せる
   document.addEventListener('keydown',e=>{
     if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight') return;
@@ -273,7 +290,9 @@ function isActive(ev, year, win){
 }
 
 function render(){
-  const year=STOPS[+document.getElementById('slider').value] ?? -550;
+  const sliderVal=+document.getElementById('slider').value;
+  const year=STOPS[sliderVal] ?? -550;
+  LS.set('year', sliderVal);
   const win=+document.getElementById('window').value;
   const era=eraOf(year);
 
@@ -297,13 +316,14 @@ function render(){
     g.evs.sort((a,b)=>b.imp-a.imp);
     const top=g.evs[0];
     const m=L.circleMarker([g.la,g.lo], markerStyle(g.type, top, g.evs.length)).addTo(map);
-    m.bindPopup(g.evs.slice(0,8).map(e=>`<div>${e.label} <a href="${wikiUrl(e)}" target="_blank" rel="noopener"><b>${e.title}</b></a></div>`).join('')+
-      (g.evs.length>8?`<div>…ほか${g.evs.length-8}件</div>`:''));
-    m.on('click',()=>showPanel(g.evs, top.region));
+    const tip = g.evs.slice(0,10).map(e=>`${e.label}　${e.title}`).join('<br>')+
+      (g.evs.length>10?`<br>…ほか${g.evs.length-10}件`:'');
+    m.bindTooltip(tip,{direction:'top',opacity:0.95,sticky:true});  // ホバーでバルーン
+    m.on('click',()=>highlight(g.evs));                              // クリックでパネル該当をハイライト
     markers.push(m);
   });
 
-  showPanel(active, null);
+  showPanel(active);
 }
 // 種別ごとのマーカー見た目（国=大きく中空っぽ・人=小さめ・出来事=標準）
 function markerStyle(type, top, count){
@@ -317,17 +337,16 @@ function markerStyle(type, top, count){
 function evCard(e){
   const col=CATS[e.cat]?CATS[e.cat].color:'#888';
   const reg=REGIONS[e.area]?REGIONS[e.area].name:e.region;
-  return `<div class="ev" style="border-left-color:${col}">
+  return `<div class="ev" data-key="${e._type}#${e.id}" style="border-left-color:${col}">
     <div class="y">${e.label} · ${reg}</div>
     <div class="t"><a href="${wikiUrl(e)}" target="_blank" rel="noopener">${e.title}<span class="ext">↗</span></a></div>
     ${e.summary?`<div class="s">${e.summary}</div>`:''}
     <div class="meta">${CATS[e.cat]?CATS[e.cat].name:e.cat} · <span class="stars">${stars(e.imp)}</span></div>
   </div>`;
 }
-function showPanel(list, label){
+function showPanel(list){
   list = list.slice().sort((a,b)=>a.year-b.year || b.imp-a.imp);
-  document.getElementById('panelTitle').textContent =
-    label ? `${label} 周辺 (${list.length})` : `この時代 (${list.length})`;
+  document.getElementById('panelTitle').textContent = `この時代 (${list.length})`;
   let html='';
   LAYERS.forEach(L=>{
     const items=list.filter(e=>e._type===L.key);
@@ -335,6 +354,16 @@ function showPanel(list, label){
     html += `<div class="sec">この時代の${L.label} (${items.length})</div>` + items.map(evCard).join('');
   });
   document.getElementById('panel').innerHTML = html || '<div class="small">該当なし。スライダーや表示幅・レイヤーを動かしてみてください。</div>';
+}
+// マーカークリック: 該当カードを全体の中でハイライト（絞り込まず比較を維持）
+function highlight(evs){
+  const keys=new Set(evs.map(e=>e._type+'#'+e.id));
+  let first=null;
+  document.querySelectorAll('#panel .ev').forEach(el=>{
+    if(keys.has(el.dataset.key)){ el.classList.add('hl'); if(!first) first=el; }
+    else el.classList.remove('hl');
+  });
+  if(first) first.scrollIntoView({block:'nearest',behavior:'smooth'});
 }
 
 boot();
