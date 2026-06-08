@@ -53,6 +53,10 @@
   </div>
   <div class="row">
     <input type="search" id="q" placeholder="出来事・地域・要約を検索…">
+    <span class="small">レイヤー</span>
+    <div class="row" id="layers"></div>
+  </div>
+  <div class="row">
     <div class="row" id="eras"></div>
   </div>
   <div class="row" id="cats"></div>
@@ -78,6 +82,7 @@ function splitLine(line){ const out=[]; let cur='',q=false;
 const ERAS=['先史','古代','中世','近世','近代','現代'];
 const COLS=[
   {key:'year',     label:'年',     cls:'year', sort:r=>+r.year_start},
+  {key:'_typeLabel',label:'種別',  sort:r=>r._typeLabel},
   {key:'era',      label:'時代',   sort:r=>ERAS.indexOf(r.era)},
   {key:'region',   label:'地域',   sort:r=>r.region},
   {key:'category', label:'分類',   sort:r=>r.category},
@@ -86,25 +91,54 @@ const COLS=[
   {key:'summary',  label:'要約',   cls:'sum', sort:r=>r.summary},
 ];
 let ROWS=[], CATS={}, sortKey='year', sortAsc=true;
+let LAYERS=[]; const layerCache={}, layerOn=new Set();
 const filt={ q:'', era:new Set(), cat:new Set() };
 
 function wikiUrl(r){ return 'https://ja.wikipedia.org/wiki/'+encodeURIComponent(r.wiki||r.title); }
 function stars(n){ n=+n||0; return '★'.repeat(n)+'☆'.repeat(5-n); }
 
 async function boot(){
-  let t,c;
+  let manifest, c;
   try{
-    [t,c]=await Promise.all([ fetch('timeline.csv').then(x=>x.text()), fetch('categories.csv').then(x=>x.text()) ]);
+    manifest=await fetch('data/layers.json').then(r=>{ if(!r.ok) throw 0; return r.json(); });
+    c=await fetch('data/'+manifest.masters.categories).then(x=>x.text());
   }catch(e){ return showErr(); }
-  if(t.startsWith('<')||!t.includes('year')) return showErr();
+  if(c.startsWith('<')) return showErr();
   parseCSV(c).forEach(x=>CATS[x.code]={name:x.name_ja,color:x.color});
-  ROWS=parseCSV(t);
-  buildHead(); buildFilters(); bind(); draw();
+  LAYERS=manifest.layers;
+  buildHead(); buildFilters(); buildLayerUI(); bind();
+  for(const L of LAYERS.filter(l=>l.default)) await loadLayer(L);
+  rebuild();
+}
+async function loadLayer(L){
+  if(!layerCache[L.key]){
+    try{ const t=await fetch('data/'+L.file).then(r=>{ if(!r.ok) throw 0; return r.text(); });
+      layerCache[L.key]=parseCSV(t).map(x=>{ x._type=L.key; x._typeLabel=L.label; return x; });
+    }catch(e){ layerCache[L.key]=[]; }
+  }
+  layerOn.add(L.key);
+}
+function rebuild(){
+  ROWS=[].concat(...LAYERS.filter(l=>layerOn.has(l.key)).map(l=>layerCache[l.key]||[]));
+  draw();
+}
+function buildLayerUI(){
+  const box=document.getElementById('layers');
+  box.innerHTML = LAYERS.map(L=>
+    `<label class="chip lyr${L.default?' on':''}" data-k="${L.key}"><input type="checkbox" ${L.default?'checked':''}> ${L.label}</label>`).join('');
+  box.querySelectorAll('.lyr').forEach(el=>{
+    el.querySelector('input').onchange=async e=>{
+      const L=LAYERS.find(x=>x.key===el.dataset.k);
+      if(e.target.checked){ await loadLayer(L); el.classList.add('on'); }
+      else { layerOn.delete(L.key); el.classList.remove('on'); }
+      rebuild();
+    };
+  });
 }
 function showErr(){
   document.querySelector('.wrap').style.display='none';
   const e=document.getElementById('err'); e.style.display='block';
-  e.innerHTML='<h2>CSVを読み込めませんでした</h2><p>簡易サーバ経由で開いてください：</p>'+
+  e.innerHTML='<h2>データを読み込めませんでした</h2><p>簡易サーバ経由で開いてください：</p>'+
     '<p><code>python3 -m http.server 8000</code> → <code>http://localhost:8000/table.html</code></p>';
 }
 function buildHead(){
@@ -152,6 +186,7 @@ function draw(){
     const cat=CATS[r.category]||{name:r.category,color:'#888'};
     return `<tr>
       <td class="year">${r.year_label}</td>
+      <td><span class="era">${r._typeLabel||''}</span></td>
       <td><span class="era">${r.era}</span></td>
       <td>${r.region}</td>
       <td><span class="badge" style="background:${cat.color}33;color:${cat.color}">${cat.name}</span></td>

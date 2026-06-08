@@ -53,6 +53,12 @@
   .leaflet-popup-content{ font-size:13px; line-height:1.5; }
   .pop-t{ font-weight:700; }
   .ctrl-min{ font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; }
+  .lyr{ font-size:12px; padding:3px 10px; border-radius:6px; cursor:pointer; user-select:none;
+        border:1px solid var(--line); background:#2a2e38; color:var(--muted); display:flex; align-items:center; gap:5px; }
+  .lyr.on{ background:#3a4150; color:#fff; border-color:#5b9cff; }
+  .lyr input{ accent-color:#5b9cff; }
+  .sec{ font-size:12px; color:#8fbaff; font-weight:700; margin:12px 0 6px; border-bottom:1px solid var(--line); padding-bottom:3px; }
+  .sec:first-child{ margin-top:0; }
 </style>
 </head>
 <body>
@@ -70,8 +76,13 @@
       <button id="play">▶ 再生</button>
     </div>
     <div class="row">
+      <span class="small">レイヤー</span>
+      <div class="cats" id="layers"></div>
       <label class="ctrl-min">表示幅 ±<span id="winVal">10</span>年
         <input type="range" id="window" min="0" max="500" value="10" step="10" style="width:140px"></label>
+    </div>
+    <div class="row">
+      <span class="small">分類</span>
       <div class="cats" id="cats"></div>
     </div>
   </header>
@@ -133,39 +144,72 @@ function stars(n){ n=+n||0; return '★'.repeat(n)+'☆'.repeat(5-n); }
 function wikiUrl(e){ return 'https://ja.wikipedia.org/wiki/'+encodeURIComponent(e.wiki||e.title); }
 
 let EVENTS=[], REGIONS={}, CATS={}, enabled=new Set(), markers=[], map, STOPS=[];
+let LAYERS=[];                 // data/layers.json の layers
+const layerCache={};           // key -> パース済み行(種別タグ付き)
+const layerOn=new Set();       // 表示ONのレイヤーkey
 
-async function boot(){
-  let t,r,c;
-  try{
-    [t,r,c] = await Promise.all([
-      fetch('timeline.csv').then(x=>x.text()),
-      fetch('regions.csv').then(x=>x.text()),
-      fetch('categories.csv').then(x=>x.text()),
-    ]);
-  }catch(e){ return showErr(); }
-  if(t.startsWith('<')||!t.includes('year')) return showErr();
-
-  parseCSV(c).forEach(x=> CATS[x.code]={name:x.name_ja,color:x.color});
-  parseCSV(r).forEach(x=> REGIONS[x.area_code]={name:x.name_ja,
-      lat:x.lat?+x.lat:null, lon:x.lon?+x.lon:null});
-  EVENTS = parseCSV(t).map(x=>({
-    id:+x.id, year:+x.year_start, year_end:+x.year_end,
+function mapRow(x, type){
+  return { _type:type, id:+x.id, year:+x.year_start, year_end:+x.year_end,
     label:x.year_label, era:x.era, area:x.area_code, region:x.region,
     cat:x.category, title:x.title, imp:+x.importance||3, summary:x.summary, wiki:x.wiki,
-    lat:x.lat!==''?+x.lat:null, lon:x.lon!==''?+x.lon:null
-  }));
+    lat:(x.lat!==''&&x.lat!=null)?+x.lat:null, lon:(x.lon!==''&&x.lon!=null)?+x.lon:null };
+}
 
-  STOPS=buildStops(); initSlider(); initMap(); initCats(); bindControls(); render();
+async function boot(){
+  let manifest, catText, regText;
+  try{
+    manifest = await fetch('data/layers.json').then(r=>{ if(!r.ok) throw 0; return r.json(); });
+    [catText,regText] = await Promise.all([
+      fetch('data/'+manifest.masters.categories).then(r=>r.text()),
+      fetch('data/'+manifest.masters.regions).then(r=>r.text())
+    ]);
+  }catch(e){ return showErr(); }
+  if(catText.startsWith('<')) return showErr();
+
+  parseCSV(catText).forEach(x=> CATS[x.code]={name:x.name_ja,color:x.color});
+  parseCSV(regText).forEach(x=> REGIONS[x.area_code]={name:x.name_ja,
+      lat:x.lat?+x.lat:null, lon:x.lon?+x.lon:null});
+  LAYERS = manifest.layers;
+
+  STOPS=buildStops(); initSlider(); initMap(); initCats(); buildLayerUI(); bindControls();
+  for(const L of LAYERS.filter(l=>l.default)) await loadLayer(L);
+  rebuild();
+}
+// レイヤーを遅延ロード（ONにされて初めてfetch、以後キャッシュ）
+async function loadLayer(L){
+  if(!layerCache[L.key]){
+    try{ const t=await fetch('data/'+L.file).then(r=>{ if(!r.ok) throw 0; return r.text(); });
+      layerCache[L.key]=parseCSV(t).map(x=>mapRow(x,L.key));
+    }catch(e){ layerCache[L.key]=[]; }
+  }
+  layerOn.add(L.key);
+}
+function unloadLayer(key){ layerOn.delete(key); }
+function rebuild(){
+  EVENTS = [].concat(...LAYERS.filter(l=>layerOn.has(l.key)).map(l=>layerCache[l.key]||[]));
+  render();
+}
+function buildLayerUI(){
+  const box=document.getElementById('layers');
+  LAYERS.forEach(L=>{
+    const el=document.createElement('label'); el.className='lyr'+(L.default?' on':'');
+    el.innerHTML=`<input type="checkbox" ${L.default?'checked':''}> ${L.label}`;
+    el.querySelector('input').onchange=async e=>{
+      if(e.target.checked){ await loadLayer(L); el.classList.add('on'); }
+      else { unloadLayer(L.key); el.classList.remove('on'); }
+      rebuild();
+    };
+    box.appendChild(el);
+  });
 }
 function showErr(){
   document.getElementById('app').style.gridTemplateRows='auto 1fr';
   document.getElementById('map').style.display='none';
   document.querySelector('aside').style.display='none';
   const e=document.getElementById('err'); e.style.display='block';
-  e.innerHTML = '<h2>CSVを読み込めませんでした</h2>'+
-   '<p>ブラウザは <code>file://</code> から直接CSVを読めません。'+
+  e.innerHTML = '<h2>データを読み込めませんでした</h2>'+
+   '<p>ブラウザは <code>file://</code> から直接ファイルを読めません。'+
    'このフォルダで簡易サーバを立ててからアクセスしてください：</p>'+
-   '<p><code>cd '+location.pathname.replace(/index\.html$/,'').replace(/^\//,'')+'</code></p>'+
    '<p><code>python3 -m http.server 8000</code></p>'+
    '<p>→ ブラウザで <code>http://localhost:8000/</code> を開く</p>';
 }
@@ -240,22 +284,19 @@ function render(){
   const active=EVENTS.filter(e=>isActive(e,year,win));
   document.getElementById('count').textContent=`${active.length}件`;
 
-  // ---- markers: イベント座標(lat/lon)でプロット。空欄はarea重心にフォールバック ----
+  // ---- markers: 種別×座標でグルーピング。座標空欄はarea重心にフォールバック ----
   markers.forEach(m=>map.removeLayer(m)); markers=[];
-  const byPt={};
+  const groups={};
   active.forEach(e=>{
     let la=e.lat, lo=e.lon;
-    if(la===null){ const r=REGIONS[e.area]; if(!r||r.lat===null) return; la=r.lat; lo=r.lon; } // 座標なし＆WORLD等は出さない
-    const k=la.toFixed(2)+','+lo.toFixed(2);
-    (byPt[k]=byPt[k]||{la,lo,evs:[]}).evs.push(e);
+    if(la===null){ const r=REGIONS[e.area]; if(!r||r.lat===null) return; la=r.lat; lo=r.lon; }
+    const k=e._type+'@'+la.toFixed(2)+','+lo.toFixed(2);
+    (groups[k]=groups[k]||{la,lo,type:e._type,evs:[]}).evs.push(e);
   });
-  Object.values(byPt).forEach(g=>{
+  Object.values(groups).forEach(g=>{
     g.evs.sort((a,b)=>b.imp-a.imp);
     const top=g.evs[0];
-    const r=6+Math.min(g.evs.length,5)+top.imp;
-    const m=L.circleMarker([g.la,g.lo],{
-      radius:r, color:'#fff', weight:1, fillColor:CATS[top.cat].color, fillOpacity:.85
-    }).addTo(map);
+    const m=L.circleMarker([g.la,g.lo], markerStyle(g.type, top, g.evs.length)).addTo(map);
     m.bindPopup(g.evs.slice(0,8).map(e=>`<div>${e.label} <a href="${wikiUrl(e)}" target="_blank" rel="noopener"><b>${e.title}</b></a></div>`).join('')+
       (g.evs.length>8?`<div>…ほか${g.evs.length-8}件</div>`:''));
     m.on('click',()=>showPanel(g.evs, top.region));
@@ -264,22 +305,36 @@ function render(){
 
   showPanel(active, null);
 }
+// 種別ごとのマーカー見た目（国=大きく中空っぽ・人=小さめ・出来事=標準）
+function markerStyle(type, top, count){
+  const s={ color:'#fff', weight:1, fillColor:(CATS[top.cat]?CATS[top.cat].color:'#888'),
+            fillOpacity:.85, radius:6+Math.min(count,5)+top.imp };
+  if(type==='polity'){ s.fillOpacity=.4; s.weight=2; s.dashArray='2'; s.radius+=3; }
+  else if(type==='person'){ s.radius=Math.max(5,4+top.imp*0.8); s.fillOpacity=.9; }
+  return s;
+}
 
+function evCard(e){
+  const col=CATS[e.cat]?CATS[e.cat].color:'#888';
+  const reg=REGIONS[e.area]?REGIONS[e.area].name:e.region;
+  return `<div class="ev" style="border-left-color:${col}">
+    <div class="y">${e.label} · ${reg}</div>
+    <div class="t"><a href="${wikiUrl(e)}" target="_blank" rel="noopener">${e.title}<span class="ext">↗</span></a></div>
+    ${e.summary?`<div class="s">${e.summary}</div>`:''}
+    <div class="meta">${CATS[e.cat]?CATS[e.cat].name:e.cat} · <span class="stars">${stars(e.imp)}</span></div>
+  </div>`;
+}
 function showPanel(list, label){
   list = list.slice().sort((a,b)=>a.year-b.year || b.imp-a.imp);
   document.getElementById('panelTitle').textContent =
-    label ? `${label} 周辺 (${list.length})` : `この時代の出来事 (${list.length})`;
-  const html = list.map(e=>{
-    const col=CATS[e.cat]?CATS[e.cat].color:'#888';
-    const reg=REGIONS[e.area]?REGIONS[e.area].name:e.region;
-    return `<div class="ev" style="border-left-color:${col}">
-      <div class="y">${e.label} · ${reg}</div>
-      <div class="t"><a href="${wikiUrl(e)}" target="_blank" rel="noopener">${e.title}<span class="ext">↗</span></a></div>
-      ${e.summary?`<div class="s">${e.summary}</div>`:''}
-      <div class="meta">${CATS[e.cat]?CATS[e.cat].name:e.cat} · <span class="stars">${stars(e.imp)}</span></div>
-    </div>`;
-  }).join('');
-  document.getElementById('panel').innerHTML = html || '<div class="small">該当なし。スライダーや表示幅を動かしてみてください。</div>';
+    label ? `${label} 周辺 (${list.length})` : `この時代 (${list.length})`;
+  let html='';
+  LAYERS.forEach(L=>{
+    const items=list.filter(e=>e._type===L.key);
+    if(!items.length) return;
+    html += `<div class="sec">この時代の${L.label} (${items.length})</div>` + items.map(evCard).join('');
+  });
+  document.getElementById('panel').innerHTML = html || '<div class="small">該当なし。スライダーや表示幅・レイヤーを動かしてみてください。</div>';
 }
 
 boot();
