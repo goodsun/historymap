@@ -84,11 +84,12 @@ data/     エンティティ（レイヤーの中身。すべて同一スキー�
   periods.csv     時代区分 …… 日・中・西欧・印・埃・朝・西アジアの時代の帯
   tech.csv        技術史 ……… 文字・金属・印刷・動力・情報など、技術の登場
   religions.csv   宗教史 ……… 主要宗教の発祥（いつ・どこで）
+  leaders.csv     歴代政権 …… 主要国の首相・大統領等の在任期間（G7＋中露印）
 ```
 
 | エンティティ | 件数 |
 |---|---:|
-| events / countries / peoples / persons / periods / tech / religions | 258 / 107 / 35 / 316 / 79 / 48 / 23 |（計 866） |
+| events / countries / peoples / persons / periods / tech / religions / leaders | 258 / 107 / 35 / 316 / 79 / 48 / 23 / 333 |（計 1199） |
 
 ### レイヤー＝ファイル（同一スキーマ）
 
