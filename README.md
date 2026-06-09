@@ -77,7 +77,8 @@ config/   設定・マスタ
   categories.csv  分類マスタ（コード・名称・色）
   regions.csv     地域マスタ（座標フォールバック用の重心）
 data/     エンティティ（レイヤーの中身。すべて同一スキーマ）
-  events.csv      出来事 …………… 戦い・条約・発明・革命など、その年の出来事
+  events.csv      出来事 …………… 条約・発明・革命・反乱など、その年の出来事
+  wars.csv        戦争 ……………… 戦争・会戦・紛争（古代の会戦〜現代の紛争）
   countries.csv   国・文明 ……… 建国〜滅亡の期間・首都/中心座標
   peoples.csv     民族・部族 …… 拡散的な集団（先史〜古代向け）
   persons.csv     人物 …………… 個人の生〜没
@@ -89,7 +90,7 @@ data/     エンティティ（レイヤーの中身。すべて同一スキー�
 
 | エンティティ | 件数 |
 |---|---:|
-| events / countries / peoples / persons / periods / tech / religions / leaders | 258 / 107 / 35 / 316 / 79 / 48 / 23 / 334 |（計 1200） |
+| events / wars / countries / peoples / persons / periods / tech / religions / leaders | 183 / 178 / 107 / 35 / 316 / 79 / 48 / 23 / 334 |（計 1303） |
 
 ### レイヤー＝ファイル（同一スキーマ）
 
