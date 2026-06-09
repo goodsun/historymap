@@ -348,7 +348,7 @@ function markerStyle(type, top, count){
 
 function evCard(e){
   const cat=CATS[e.cat]||{name:e.cat,color:'#888'};
-  const reg=REGIONS[e.area]?REGIONS[e.area].name:e.region;
+  const reg=e.region || (REGIONS[e.area]?REGIONS[e.area].name:e.area);
   return `<div class="ev" data-key="${e._type}#${e.id}" style="border-left-color:${cat.color}">
     <div class="row1">
       <span class="y">${e.label}</span>
