@@ -290,12 +290,13 @@ function bindControls(){
   };
 }
 
+// 表示判定：選択年±win の表示窓と事象の期間 [year_start, year_end] が重なれば表示（点・スパン共通）。
+// 各端には max(win, その端の年代の刻み幅/2) の許容を取り、刻みが粗い時代でもスナップで必ず拾える。
 function isActive(ev, year, win){
   if(!enabled.has(ev.cat)) return false;
-  const h=snapStep(ev.year)/2;         // その出来事の年代の刻みに応じた最小許容（スナップで必ず拾える）
-  if(ev.year_end===null) return ev.year-h<=year;                          // 継続中（開始年以降ずっと）
-  if(ev.year_end>ev.year) return ev.year-h<=year && year<=ev.year_end+h;  // スパン
-  return Math.abs(ev.year-year)<=Math.max(win,h);                          // 点イベント
+  const lo=ev.year-Math.max(win, snapStep(ev.year)/2);
+  if(ev.year_end===null) return lo<=year;                                  // 継続中（開始年以降ずっと）
+  return lo<=year && year<=ev.year_end+Math.max(win, snapStep(ev.year_end)/2);
 }
 
 function render(){
