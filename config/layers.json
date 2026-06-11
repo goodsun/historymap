@@ -2,10 +2,10 @@
   "masters": { "categories": "config/categories.csv", "regions": "config/regions.csv" },
   "layers": [
     { "key": "event",  "file": "data/events.csv",    "label": "出来事",     "default": true  },
+    { "key": "person", "file": "data/persons.csv",    "label": "人物",       "default": false },
+    { "key": "people", "file": "data/peoples.csv",    "label": "民族・部族", "default": false },
     { "key": "war",    "file": "data/wars.csv",       "label": "戦争",       "default": false },
     { "key": "polity", "file": "data/countries.csv",  "label": "国",         "default": false },
-    { "key": "people", "file": "data/peoples.csv",    "label": "民族・部族", "default": false },
-    { "key": "person", "file": "data/persons.csv",    "label": "人物",       "default": false },
     { "key": "period", "file": "data/periods.csv",    "label": "時代区分",   "default": false },
     { "key": "tech",   "file": "data/tech.csv",       "label": "技術史",     "default": false },
     { "key": "religion","file": "data/religions.csv",  "label": "宗教史",     "default": false },
