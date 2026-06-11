@@ -90,7 +90,7 @@ data/     エンティティ（レイヤーの中身。すべて同一スキー�
 
 | エンティティ | 件数 |
 |---|---:|
-| events / wars / countries / peoples / persons / periods / tech / religions / leaders | 148 / 199 / 112 / 44 / 316 / 82 / 48 / 23 / 334 |（計 1306） |
+| events / wars / countries / peoples / persons / periods / tech / religions / leaders | 148 / 199 / 112 / 44 / 316 / 82 / 70 / 23 / 334 |（計 1328） |
 
 ### レイヤー＝ファイル（同一スキーマ）
 
