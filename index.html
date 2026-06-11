@@ -75,7 +75,7 @@
     </div>
     <div class="row">
       <div id="yearBig">—</div>
-      <input type="range" id="slider" min="-6500" max="2020" value="-550" step="1">
+      <input type="range" id="slider" min="-300000" max="2020" value="-550" step="1">
       <button id="play">▶ 再生</button>
     </div>
     <div class="row">
@@ -132,15 +132,19 @@ const ERAS = [
   {name:'現代', max:9999,  color:'#cc0000'},
 ];
 function eraOf(y){ for(const e of ERAS) if(y<e.max) return e; return ERAS[ERAS.length-1]; }
-function fmtYear(y){ return y<0 ? 'BC'+(-y) : (y===0?'0':''+y); }
-// 年代ごとに刻み幅を変える：先史1000年・古代10年・以降1年
-function snapStep(y){ return y<-1000 ? 1000 : y<476 ? 10 : 1; }
+function fmtYear(y){
+  if(y<=-10000) return '約'+(Math.round(-y/1000)/10)+'万年前';  // 超先史は「○万年前」
+  return y<0 ? 'BC'+(-y) : (y===0?'0':''+y);
+}
+// 年代ごとに刻み幅を変える：超先史1万年・先史1000年・古代10年・以降1年
+function snapStep(y){ return y<-10000 ? 10000 : y<-1000 ? 1000 : y<476 ? 10 : 1; }
 // スライダーの停止点を生成（刻みが粗い時代ほど停止点が少なく＝幅も狭くなる）
 function buildStops(){
   const s=[];
-  for(let y=-6500; y<-1000; y+=1000) s.push(y);  // 先史
-  for(let y=-1000; y<476;  y+=10)   s.push(y);    // 古代
-  for(let y=476;  y<=2020; y+=1)    s.push(y);    // 中世以降
+  for(let y=-300000; y<-10000; y+=10000) s.push(y);  // 超先史（人類の拡散）
+  for(let y=-10000;  y<-1000;  y+=1000)  s.push(y);  // 先史
+  for(let y=-1000;   y<476;    y+=10)    s.push(y);   // 古代
+  for(let y=476;     y<=2020;  y+=1)     s.push(y);   // 中世以降
   return s;
 }
 function stars(n){ n=+n||0; return '★'.repeat(n)+'☆'.repeat(5-n); }
