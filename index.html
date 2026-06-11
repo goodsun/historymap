@@ -265,6 +265,11 @@ function initCats(){
 function bindControls(){
   const s=document.getElementById('slider');
   s.oninput=()=>render();
+  document.getElementById('reset').onclick=()=>{      // 時間軸を初期位置に戻す
+    const def=STOPS.indexOf(-550);
+    s.value = def>=0 ? def : Math.floor(STOPS.length/2);
+    LS.set('year', +s.value); render();
+  };
   const w=document.getElementById('window');
   w.oninput=()=>{ document.getElementById('winVal').textContent=w.value; LS.set('window',+w.value); render(); };
   // 要約の表示/非表示トグル（#panelのクラスで制御・再描画不要）
